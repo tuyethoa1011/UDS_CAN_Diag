@@ -394,7 +394,7 @@ int main(void)
 			 			{
 			 				PositiveReadRsp_TxData[index_array+2] = DataBuffer[index_array];
 			 			}
-			 			//send it to my love (My tester) - first frame
+			 			//send to tester - first frame
 			 			 if (HAL_CAN_AddTxMessage(&hcan, &ReadRsp_TxHeader,PositiveReadRsp_TxData,&ReadRspTxMailbox) != HAL_OK)
 			 			{
 			 				 error_flag = 1;
