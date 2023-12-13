@@ -159,18 +159,11 @@ uint8_t Check_ReadRq_Validation(uint8_t FT, uint8_t DL, uint8_t Data_buf[])
 				}
 				break;
 			}
-			case 1: //first frame
+			case 1: //flow control
 			{
 				break;
 			}
-			case 2: //consecutive frame
-			{
-				break;
-			}
-			case 3: //flow control
-			{
-				break;
-			}
+		
 		}
 	}
 
