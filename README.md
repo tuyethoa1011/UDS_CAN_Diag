@@ -4,7 +4,7 @@ MCU build target: STM32F103C8T6
 
 Versions:
 - 0.1 1st version init (1)
-- 0.2 Clean code + Improvement algorithm idea (1)
+- 0.2 Clean code + Algorithm idea improvement (1)
 
 Features:
 - **$22 Read Data By Identifier** - Not supported First Frame yet (1)
