@@ -159,18 +159,11 @@ uint8_t Check_ReadRq_Validation(uint8_t FT, uint8_t DL, uint8_t Data_buf[])
 				}
 				break;
 			}
-			case 1: //first frame
+			case 1: //flow control
 			{
 				break;
 			}
-			case 2: //consecutive frame
-			{
-				break;
-			}
-			case 3: //flow control
-			{
-				break;
-			}
+		
 		}
 	}
 
@@ -394,7 +387,7 @@ int main(void)
 			 			{
 			 				PositiveReadRsp_TxData[index_array+2] = DataBuffer[index_array];
 			 			}
-			 			//send it to my love (My tester) - first frame
+			 			//send to tester - first frame
 			 			 if (HAL_CAN_AddTxMessage(&hcan, &ReadRsp_TxHeader,PositiveReadRsp_TxData,&ReadRspTxMailbox) != HAL_OK)
 			 			{
 			 				 error_flag = 1;

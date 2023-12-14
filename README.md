@@ -1,4 +1,4 @@
-# UDS_CAN_Diagnostic
+# UDS_CAN
 
 MCU build target: STM32F103C8T6
 
