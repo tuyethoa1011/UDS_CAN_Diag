@@ -1,6 +1,0 @@
-../Core/Src/button.c:22:13:button_pressing_callback	1
-../Core/Src/button.c:27:13:button_release_callback	1
-../Core/Src/button.c:37:13:button_shortpressing_callback_500ms	1
-../Core/Src/button.c:42:13:button_longpressing_callback_500ms	1
-../Core/Src/button.c:49:6:button_handle	10
-../Core/Src/button.c:107:6:button_Init	1
