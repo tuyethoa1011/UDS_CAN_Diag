@@ -10,9 +10,11 @@ Versions:
 
 Features:
 - **$22 Read Data By Identifier** - Not supported First Frame yet (1)
-- **$2E Write Data By Identifier** - Just defined (2)
-- **$23 Security Access** - in progress (3)
+- **$2E Write Data By Identifier** - Complete development, not testing (2)
+- **$23 Security Access** - Complete development, not testing (3)
+
+  * NOTES: Some of negative response cases is not handled yet.
   
 Author: Ngo Le Tuyet Hoa (Sam)
 
-Last modified: 16/12/2023
+Last modified: 17/12/2023
