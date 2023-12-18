@@ -10,7 +10,9 @@ Features:
   * NOTES:
     - Some of negative response cases is not handled yet.
     - Needs FreeRTOS to handle button signal.
-  
+    - Clean code, improvements are needed.
+      
+Expected writing report deadline: 23/12/2023
 Author: Ngo Le Tuyet Hoa (Sam)
 
 Last modified: 18/12/2023
