@@ -503,6 +503,7 @@ int main(void)
 	 			 		 else if(security_flag == 1)
 	 			 		 {
 	 			 			ecu_state = WRITEREQUEST_STATE;
+	 			 			security_flag = 0;
 	 			 		 }
 	 			 		 break;
 	 			 	 }
@@ -528,74 +529,70 @@ int main(void)
 	 	 case WRITEREQUEST_STATE:
 	 	 {
 	 		 //receive write request
-	 		 if(ReadRq_flag == 1)
-	 		 {
-	 			 if(FrameType == 0)
+	 		FT_String = SF_N_PCI_FrameTypeHandle(ECU_RxData[0]);
+	 		FrameType = GetFrameType(FT_String);
+	 		if(FrameType == 0)
+	 		{
+	 			 DID_Val = GetDID(ECU_RxData[2], ECU_RxData[3]);
+
+	 			 switch(DID_Val)
 	 			 {
-	 				DID_Val = GetDID(ECU_RxData[2], ECU_RxData[3]);
-
-	 				switch(DID_Val)
-	 				{
-	 					case 0x0123:
-	 					{
-	 						DID_available_flag = 1;
-	 						break;
-	 					}
-	 				}
-
-	 				if(DID_available_flag == 1)
-	 				{
-	 					//check data length >= 4 bytes
-	 					DL_String = SF_N_PCI_DataLenngthHandle(ECU_RxData[0]);
-	 					DataLength = GetDataLength(DL_String);
-
-	 					if(DataLength>=4)
-	 					{
-	 						//write to data buffer
-	 						for(index_array = 0;index_array<4;index_array++)
-	 						{
-	 							DataBuffer[index_array] = ECU_RxData[index_array+4];
-	 						}
-	 						//send positive response
-	 						if(HAL_CAN_AddTxMessage(&hcan,&ECU_TxHeader,WritePositiveResponse_TxData,&ECU_TxMailbox)!=HAL_OK)
-	 						{
-	 							error_flag = 1;
-	 						} else {
-	 							error_flag = 0;
-	 						}
-
-	 					} else {
-	 						//send negative response for data length
-
-	 						WriteNegativeResponse_TxData[0] = 0x7F;
-	 						WriteNegativeResponse_TxData[1] = 0x2E;
-	 						WriteNegativeResponse_TxData[2] = 0x13;
-
-	 						if(HAL_CAN_AddTxMessage(&hcan,&ECU_TxHeader,WriteNegativeResponse_TxData,&ECU_TxMailbox)!=HAL_OK)
-	 						{
-	 							error_flag = 1;
-	 						} else {
-	 							error_flag = 0;
-	 						}
-	 					}
-
-	 					DID_available_flag = 0;
-	 					} else { //else no DID
-	 						//send negative response - DID is not supported
-
-	 						WriteNegativeResponse_TxData[0] = 0x7F;
-	 						WriteNegativeResponse_TxData[1] = 0x2E;
-	 						WriteNegativeResponse_TxData[2] = 0x31;
-
-	 						if(HAL_CAN_AddTxMessage(&hcan,&ECU_TxHeader,WriteNegativeResponse_TxData,&ECU_TxMailbox)!=HAL_OK)
-	 						{
-	 							error_flag = 1;
-	 						} else {
-	 							error_flag = 0;
-	 						}
+	 			 	 case 0x0123:
+	 			 	 {
+	 					DID_available_flag = 1;
+	 					break;
 	 				}
 	 			 }
-	 			 ReadRq_flag = 0;
+
+	 			 if(DID_available_flag == 1)
+	 			 {
+	 				 //check data length >= 4 bytes
+	 				 DL_String = SF_N_PCI_DataLenngthHandle(ECU_RxData[0]);
+	 				 DataLength = GetDataLength(DL_String);
+
+	 				 if(DataLength>=4)
+	 				 {
+	 					 //write to data buffer
+	 					 for(index_array = 0;index_array<4;index_array++)
+	 					 {
+	 						 DataBuffer[index_array] = ECU_RxData[index_array+4];
+	 					 }
+	 					 //send positive response
+	 					 if(HAL_CAN_AddTxMessage(&hcan,&ECU_TxHeader,WritePositiveResponse_TxData,&ECU_TxMailbox)!=HAL_OK)
+	 					 {
+	 						 error_flag = 1;
+	 					 } else {
+	 						 error_flag = 0;
+	 					 }
+
+	 				 } else {
+	 					 //send negative response for data length
+
+	 					 WriteNegativeResponse_TxData[0] = 0x7F;
+	 					 WriteNegativeResponse_TxData[1] = 0x2E;
+	 					 WriteNegativeResponse_TxData[2] = 0x13;
+
+	 					 if(HAL_CAN_AddTxMessage(&hcan,&ECU_TxHeader,WriteNegativeResponse_TxData,&ECU_TxMailbox)!=HAL_OK)
+	 					 {
+	 						 error_flag = 1;
+	 					 } else {
+	 						 error_flag = 0;
+	 					 }
+	 				 }
+	 				 DID_available_flag = 0;
+	 			 } else { //else no DID
+	 				//send negative response - DID is not supported
+	 				 WriteNegativeResponse_TxData[0] = 0x7F;
+	 				 WriteNegativeResponse_TxData[1] = 0x2E;
+	 				 WriteNegativeResponse_TxData[2] = 0x31;
+
+	 				 if(HAL_CAN_AddTxMessage(&hcan,&ECU_TxHeader,WriteNegativeResponse_TxData,&ECU_TxMailbox)!=HAL_OK)
+	 				 {
+	 					 error_flag = 1;
+	 				 } else {
+	 					 error_flag = 0;
+	 				 }
+	 			}
 	 		 }
 	 		 ecu_state = IDLE_STATE;
 	 		 break;

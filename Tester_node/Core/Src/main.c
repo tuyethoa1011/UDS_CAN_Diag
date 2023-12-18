@@ -308,7 +308,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  HAL_Delay(500);
+	  //HAL_Delay(500);
 	  switch(tester_state) //change state
 	  {
 	 	case INIT_STATE:
@@ -361,7 +361,7 @@ int main(void)
 	 				} else if (security_flag == 1)
 	 				{
 	 					//start transmitting write request to ECU
-	 					if(HAL_CAN_AddTxMessage(&hcan,&Tester_TxHeader,ReadRq_TxData,&Tester_TxMailbox)!=HAL_OK)
+	 					if(HAL_CAN_AddTxMessage(&hcan,&Tester_TxHeader,WriteRq_TxData,&Tester_TxMailbox)!=HAL_OK)
 	 					{
 	 						error_flag = 1;
 	 					}else{
@@ -388,7 +388,8 @@ int main(void)
 	 							case 0x6E: //positive
 	 							{
 	 								//do something here to know if write successful or not
-	 								tester_state = INIT_STATE; //positive response -> get back to init state
+	 								tester_state = REQUEST_READ; //positive response -> get back to init state
+	 								break;
 	 							}
 	 							case 0x7F: //negative
 								{
@@ -396,6 +397,7 @@ int main(void)
 									//what kind of negative response we receive
 									tester_state = INIT_STATE;
 					 				//negative response -> get back to init state
+									break;
 								}
 	 						}
 	 					}
@@ -595,7 +597,7 @@ int main(void)
 	 						if(Tester_RxData[1]==(0x27+0x40)) //positive
 	 						{
 	 							security_flag = 1;
-	 							tester_state = INIT_STATE;
+	 							tester_state = REQUEST_WRITE;
 	 						} else if(Tester_RxData[1]==0x7F) //negative with invalid key error
 	 						{
 	 							security_flag = 0;
@@ -826,59 +828,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) //!WARNING: Don't ch
 			//turn on led
 			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3,GPIO_PIN_SET);
 
-//			while(1) {
-//			switch(write_state)
-//			{
-//				case SEND_WRITEREQUEST:
-//				{
-//					//start transmitting write request to ECU
-//					if(HAL_CAN_AddTxMessage(&hcan,&Tester_TxHeader,WriteRq_TxData,&Tester_TxMailbox)!=HAL_OK)
-//					{
-//						error_flag = 1;
-//					}else{
-//						error_flag = 0;
-//						write_state = WRITE_RESPONSE;
-//					}
-//					break;
-//				}
-//				case WRITE_RESPONSE:
-//				{
-//					//wait for write response
-//					if(flag_read_response == 1)
-//					{
-//						//check frame type
-//						//check what kind of response through Tester_RxData[1]
-//						FT_String = SF_N_PCI_FrameTypeHandle(Tester_RxData[0]);
-//						FrameType = GetFrameType(FT_String);
-//
-//						if(FrameType==0)
-//						{
-//							switch(Tester_RxData[1])
-//							{
-//								case 0x6E: //positive
-//								{
-//									//do something here to know if write successful or not
-//									ReadSingleFrame_handle();
-//									tester_state = INIT_STATE; //positive response -> get back to init state
-//									break;
-//								}
-//								case 0x7F: //negative
-//								{
-//									ReadSingleFrame_handle();
-//									//do something here to know if write successful or not
-//									//what kind of negative response we receive
-//									tester_state = INIT_STATE;
-//									//negative response -> get back to init state
-//									break;
-//								}
-//							}
-//						}
-//						flag_read_response = 0;
-//					  }
-//					break;
-//				  }
-//				}
-//			} //end while
 			if(timer_cnt++==5000)
 			{
 				//turn off led
