@@ -11,13 +11,11 @@
 */
 #include "button.h"
 
-uint8_t long_press_detect; //bien luu tru detect nhan giu lau
+uint8_t long_press_detect = 0;
+uint8_t btn1_press_flag = 1;
+uint8_t btn2_press_flag = 1;
 
-uint8_t btn1_press_flag;
-uint8_t btn2_press_flag;
-
-uint8_t test_flag_twicepress;
-
+uint8_t test_flag_twicepress = 0;
 
 __weak void button_pressing_callback(Button_Typedef *ButtonX)
 {

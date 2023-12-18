@@ -37,7 +37,6 @@ typedef enum
 	REQUEST_READ,
 	REQUEST_WRITE,
 	REQUEST_SECURITY_ACCESS,
-	READ_ECU_DATA, //gotta change this after handle security
 }Tester_Status;
 
 typedef enum
@@ -66,6 +65,12 @@ typedef enum
 	SEND_WRITEREQUEST,
 	WRITE_RESPONSE,
 }Write_Status;
+
+typedef enum
+{
+	NOT_PRESS,
+	IS_PRESS,
+}Button_Status;
 
 /* USER CODE END PTD */
 
@@ -120,15 +125,16 @@ uint8_t error_flag = 0;
 uint8_t request_seedsend_flag = 0;
 uint8_t send_firstframe_flag = 0;
 uint8_t continue_tosend_flag = 0;
-//uint8_t wait_flag = 0;
-//uintt8_t overflow_flag = 0;
 
 uint16_t timer_cnt = 0;
 uint16_t index_array;
+uint16_t prev_index_array = 0;
 
 //---- button handle variable ----
 Button_Typedef BTN1;
-uint8_t button_sig = 0;
+uint8_t button_sig = 1; //thay doi gia tri bien de doc/ ghi
+//button sig = 0 -> Doc du lieu cua ECU
+//button sig = 1 -> Ghi du lieu vao ECU theo co che: SecA -> Write
 
 //khai bao bien luu trang thai hien tai cua tester
 Tester_Status tester_state;
@@ -136,14 +142,15 @@ Security_Status security_state = 0;
 Multiflow_Status multiflow_state = 0;
 Flow_State flow_state;
 Write_Status write_state;
+Button_Status button_state;
 
 /*KEY security*/
 uint8_t key[16];
 /*SEED security recieve*/
 uint8_t seed[4];
 
-uint8_t MaxConsecutiveFrame_count;
-uint8_t sequence_num;
+uint8_t MaxConsecutiveFrame_count = 16/7 + 1;
+uint8_t sequence_num=1;
 
 /* USER CODE END PV */
 
@@ -154,7 +161,6 @@ static void MX_CAN_Init(void);
 static void MX_TIM4_Init(void);
 static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
-void ReadRequest_handle(void);
 void ReadFirstFrame_handle(void);
 void ConscutiveFrameRead_handle(void);
 uint8_t GetFrameType(uint8_t FT_byteString);
@@ -164,14 +170,6 @@ void ReadSingleFrame_handle(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
-void button_shortpressing_callback_500ms(Button_Typedef *ButtonX)
-{
-	if(ButtonX == &BTN1)
-	{
-		button_sig = 1;
-	}
-}
 
 void button_longpressing_callback_500ms(Button_Typedef *ButtonX)
 {
@@ -227,19 +225,6 @@ uint8_t SF_N_PCI_FrameTypeHandle(uint8_t byteString) //SF_PCI: Single Frame Prot
 	return (byteString >> 4) & 0x03;
 }
 
-void ReadRequest_handle(void) //send read request to ECU
-{
-	//Gui theo chu ky 1s, tuc la cu 1 giay gui goi tin de doc 1 lan
-	HAL_Delay(1000);
-
-	if (HAL_CAN_AddTxMessage(&hcan, &Tester_TxHeader, ReadRq_TxData, &Tester_TxMailbox) != HAL_OK)
-	{
-		error_flag = 1;
-	} else //Transmit oke
-	{
-		error_flag = 0;
-	}
-}
 
 void ReadSingleFrame_handle(void)
 {
@@ -323,32 +308,44 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  HAL_Delay(1000);
+	  HAL_Delay(500);
 	  switch(tester_state) //change state
 	  {
 	 	case INIT_STATE:
 		{
 			//check buton_state
-			button_handle(&BTN1);
-			if(button_sig == 0)
+			if(button_sig==0)
 			{
 				tester_state = REQUEST_READ;
-			} else if(button_sig == 1)
+			} else if(button_sig==1)
 			{
 				tester_state = REQUEST_WRITE;
-				button_sig = 0;
+				//button_sig = 0;
 			}
 			break;
 		}
 	 	case REQUEST_READ: //send to ECU
 	 	{
-	 		//change format same as write request
-	 		ReadRequest_handle();
-	 		FT_String = SF_N_PCI_FrameTypeHandle(Tester_RxData[3]);
-	 		FrameType = GetFrameType(FT_String); //check
+	 		//Gui theo chu ky 1s, tuc la cu 1 giay gui goi tin de doc 1 lan
+			HAL_Delay(1000);
 
-	 		if(FrameType == FT_SINGLEFRAME && flag_read_response == 1) {
-	 			tester_state = READ_ECU_DATA;
+			if (HAL_CAN_AddTxMessage(&hcan, &Tester_TxHeader, ReadRq_TxData, &Tester_TxMailbox) != HAL_OK)
+			{
+				error_flag = 1;
+			} else //Transmit oke
+			{
+				error_flag = 0;
+			}
+
+	 		if(flag_read_response == 1) {
+	 			FT_String = SF_N_PCI_FrameTypeHandle(Tester_RxData[3]);
+	 			FrameType = GetFrameType(FT_String); //check
+	 			if(FrameType == FT_SINGLEFRAME)
+	 			{
+	 				ReadSingleFrame_handle();
+	 				tester_state = INIT_STATE;
+	 			}
+	 			flag_read_response = 0;
 	 		}
 	 		break;
 	 	}
@@ -404,6 +401,7 @@ int main(void)
 	 					}
 	 					flag_read_response = 0;
 	 				}
+	 				break;
 	 			}
 	 		}
 
@@ -431,7 +429,34 @@ int main(void)
 						case 1: //cho goi tin gui ve mang seed
 						{
 							if(flag_read_response)
-							{
+							{	//calculate key before sending
+				 				//get seed
+				 				seed[0] = Tester_RxData[3];
+				 				seed[1] = Tester_RxData[4];
+				 				seed[2] = Tester_RxData[5];
+				 				seed[3] = Tester_RxData[6];
+
+				 				//calc key
+				 				key[0] = seed[0] ^ seed[1]; //xor
+				 				key[1] = seed[1] + seed[2];
+				 				key[2] = seed[2] ^ seed[3];
+				 				key[3] = seed[3] + seed[0];
+
+				 				key[4] = seed[0] | seed[1];
+				 				key[5] = seed[1] + seed[2];
+				 				key[6] = seed[2] | seed[3];
+				 				key[7] = seed[3] + seed[0];
+
+				 				key[8] = seed[0] & seed[1];
+				 				key[9] = seed[1] + seed[2];
+				 				key[10] = seed[2] & seed[3];
+				 				key[11] = seed[3] + seed[0];
+
+				 				key[12] = seed[0] - seed[1];
+				 				key[13] = seed[1] + seed[2];
+				 				key[14] = seed[2] - seed[3];
+				 				key[15] = seed[3] + seed[0];
+
 								security_state = SEND_KEY;
 								flag_read_response = 0;
 								request_seedsend_flag = 0;
@@ -443,33 +468,6 @@ int main(void)
 				}
 	 			case SEND_KEY:
 	 			{
-	 				//calculate key before sending
-	 				//get seed
-	 				seed[0] = Tester_RxData[3];
-	 				seed[1] = Tester_RxData[4];
-	 				seed[2] = Tester_RxData[5];
-	 				seed[3] = Tester_RxData[6];
-
-	 				//calc key
-	 				key[0] = seed[0] ^ seed[1]; //xor
-	 				key[1] = seed[1] + seed[2];
-	 				key[2] = seed[2] ^ seed[3];
-	 				key[3] = seed[3] + seed[0];
-
-	 				key[4] = seed[0] | seed[1];
-	 				key[5] = seed[1] + seed[2];
-	 				key[6] = seed[2] | seed[3];
-	 				key[7] = seed[3] + seed[0];
-
-	 				key[8] = seed[0] & seed[1];
-	 				key[9] = seed[1] + seed[2];
-	 				key[10] = seed[2] & seed[3];
-	 				key[11] = seed[3] + seed[0];
-
-	 				key[12] = seed[0] - seed[1];
-	 				key[13] = seed[1] + seed[2];
-	 				key[14] = seed[2] - seed[3];
-	 				key[15] = seed[3] + seed[0];
 
 	 				switch(multiflow_state)
 	 				{
@@ -543,35 +541,40 @@ int main(void)
 	 					}
 	 					case CONSECUTIVEFRAME_SEND:
 	 					{
-	 						MaxConsecutiveFrame_count = KEY_LENGTH/7 + 1;
 	 						//start transmitting remain data
-	 						while(1)
+	 						while(1){
+	 						if(MaxConsecutiveFrame_count < sequence_num) 	//done transmitting - wait for ecu response
 	 						{
-	 							if(MaxConsecutiveFrame_count < sequence_num) 	//done transmitting - wait for ecu response
-	 							{
-	 								tester_state = AUTHENTICATE_RESPONSE;
+	 							security_state = AUTHENTICATE_RESPONSE;
+	 							sequence_num = 1;
+	 							break;
+	 						}
+	 						KeySend_TxData[0] = FT_CONSECUTIVEFRAME + sequence_num; //0x20 FT Consecutive Frame
+	 						for(index_array = prev_index_array;index_array<prev_index_array+7;index_array++)
+	 						{
+	 							if(index_array>= 16) {
+	 								KeySend_TxData[3] = 0x00;
+	 								KeySend_TxData[4] = 0x00;
+	 								KeySend_TxData[5] = 0x00;
+	 								KeySend_TxData[6] = 0x00;
+	 								KeySend_TxData[7] = 0x00;
 	 								break;
-	 							}
-	 							KeySend_TxData[0] = FT_CONSECUTIVEFRAME + sequence_num; //0x20 FT Consecutive Frame
-	 							for(index_array = 1;index_array<8;index_array++)
+	 							} else if(index_array<16)
 	 							{
-	 								if(index_array*sequence_num >= 16) {
-	 									break;
-	 								} else if(index_array*sequence_num < 16)
-	 								{
-	 									KeySend_TxData[index_array] = key[index_array*sequence_num];
-	 								}
+	 								KeySend_TxData[(index_array-prev_index_array)+1] = key[index_array];
 	 							}
-	 							//start transmit CF#n. n - sequence_num
-	 							if(HAL_CAN_AddTxMessage(&hcan,&Tester_TxHeader,KeySend_TxData,&Tester_TxMailbox) != HAL_OK)
-	 							{
-	 								error_flag = 1;
-	 							} else {
+	 						}
+	 						prev_index_array = index_array;
+	 						//start transmit CF#n. n - sequence_num
+	 						if(HAL_CAN_AddTxMessage(&hcan,&Tester_TxHeader,KeySend_TxData,&Tester_TxMailbox) != HAL_OK)
+	 						{
+	 							error_flag = 1;
+	 						} else {
 	 								error_flag = 0;
-	 							}
+	 								sequence_num++;
+	 						}
 
-	 							sequence_num++;
-	 							HAL_Delay(500); //500ms send once CF#n
+	 						HAL_Delay(1500); //500ms send once CF#n
 	 						}
 	 						break;
 	 					}
@@ -600,6 +603,9 @@ int main(void)
 	 							tester_state = INIT_STATE;
 	 						}
 	 					}
+	 					ReadSingleFrame_handle(); //for debugging purpose
+
+	 					flag_read_response = 0;
 	 				}
 	 				break;
 	 			}
@@ -611,13 +617,6 @@ int main(void)
 	 		//
 	 		break;
 	 	}
-	 	case READ_ECU_DATA: //Read from ECU
-	 	{
-	 		ReadSingleFrame_handle();
-	 		tester_state = INIT_STATE;
-	 		break;
-	 	}
-
 	 }
 
     /* USER CODE END WHILE */
@@ -722,7 +721,7 @@ static void MX_TIM4_Init(void)
 
   /* USER CODE END TIM4_Init 1 */
   htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 3599;
+  htim4.Init.Prescaler = 7199;
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim4.Init.Period = 9;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -826,6 +825,60 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) //!WARNING: Don't ch
 		{
 			//turn on led
 			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3,GPIO_PIN_SET);
+
+//			while(1) {
+//			switch(write_state)
+//			{
+//				case SEND_WRITEREQUEST:
+//				{
+//					//start transmitting write request to ECU
+//					if(HAL_CAN_AddTxMessage(&hcan,&Tester_TxHeader,WriteRq_TxData,&Tester_TxMailbox)!=HAL_OK)
+//					{
+//						error_flag = 1;
+//					}else{
+//						error_flag = 0;
+//						write_state = WRITE_RESPONSE;
+//					}
+//					break;
+//				}
+//				case WRITE_RESPONSE:
+//				{
+//					//wait for write response
+//					if(flag_read_response == 1)
+//					{
+//						//check frame type
+//						//check what kind of response through Tester_RxData[1]
+//						FT_String = SF_N_PCI_FrameTypeHandle(Tester_RxData[0]);
+//						FrameType = GetFrameType(FT_String);
+//
+//						if(FrameType==0)
+//						{
+//							switch(Tester_RxData[1])
+//							{
+//								case 0x6E: //positive
+//								{
+//									//do something here to know if write successful or not
+//									ReadSingleFrame_handle();
+//									tester_state = INIT_STATE; //positive response -> get back to init state
+//									break;
+//								}
+//								case 0x7F: //negative
+//								{
+//									ReadSingleFrame_handle();
+//									//do something here to know if write successful or not
+//									//what kind of negative response we receive
+//									tester_state = INIT_STATE;
+//									//negative response -> get back to init state
+//									break;
+//								}
+//							}
+//						}
+//						flag_read_response = 0;
+//					  }
+//					break;
+//				  }
+//				}
+//			} //end while
 			if(timer_cnt++==5000)
 			{
 				//turn off led

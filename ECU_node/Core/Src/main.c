@@ -87,7 +87,7 @@ typedef enum
 #define SEC_LEVEL1 0x01
 
 /*Define Data Length*/
-#define KEY_LENGTH 16
+#define KEY_LENGTH 0x16
 /*Define Data Length*/
 
 /*Valid key definition*/
@@ -150,11 +150,11 @@ uint8_t key[16];
 uint8_t count_checkkey_fc = 0; //count check key -> send flow control
 uint8_t tester_key[16];
 uint8_t prev_index_array;
-uint8_t count_cf_read=1;
+uint8_t count_cf_read = 1;
+uint8_t max_cf_read = 16/7+1; //16: key datalength
 
 ECU_Status ecu_state;
 Security_Status security_state = 0;
-//Frame_Status frame_recv_state;
 SecLevel level;
 
 /* USER CODE END PV */
@@ -170,7 +170,8 @@ uint8_t SF_N_PCI_FrameTypeHandle(uint8_t byteString);
 uint8_t SF_N_PCI_DataLenngthHandle(uint8_t byteString);
 uint8_t GetFrameType(uint8_t FT_byteString);
 uint8_t GetDataLength(uint8_t DL_byteString);
-uint8_t GetSecurityLevel(uint8_t LV_byteSring, uint8_t *keyLV_byteString);
+uint8_t GetSecurityLevel(uint8_t LV_byteSring);
+uint8_t GetSecurityKeyLevel(uint8_t SecLevel_Val);
 uint8_t Check_ReadRq_Validation(uint8_t FT, uint8_t DL, uint8_t Data_buf[]);
 uint8_t GetCANFrameSize(uint8_t aData[]);
 uint16_t GetDID(uint8_t DID_HByteString,uint8_t DID_LByteString);
@@ -181,21 +182,27 @@ void GetDIDValueFromRecordTableOfDID(uint16_t DID_Val,uint8_t *buf_arr);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-uint8_t GetSecurityLevel(uint8_t LV_byteSring, uint8_t *keyLV_byteString)
+uint8_t GetSecurityLevel(uint8_t LV_byteSring)
 {
 	uint8_t SecLevel_res;
-	uint8_t key_lv;
 	switch(LV_byteSring)
 	{
 		case SEC_LEVEL1:
 		{
-			key_lv = 0x02;
-			keyLV_byteString = &key_lv;
 			SecLevel_res = 0;
 			break;
 		}
 	}
 	return SecLevel_res;
+}
+uint8_t GetSecurityKeyLevel(uint8_t SecLevel_Val)
+{
+	uint8_t keylv_res;
+	if(SecLevel_Val==LEVEL1)
+	{
+		keylv_res = 0x02;
+	}
+	return keylv_res;
 }
 uint16_t GetDID(uint8_t DID_HByteString,uint8_t DID_LByteString)
 {
@@ -471,8 +478,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	 HAL_Delay(1000);
-
+	 HAL_Delay(100);
 	 switch(ecu_state)
 	 {
 	 	 case IDLE_STATE:
@@ -600,7 +606,8 @@ int main(void)
 	 		 {
 	 		 	 case SEND_SEED: //truoc do da nhan duoc goi request security tu tester
 	 		 	 {
-	 		 		SecurityLevel = GetSecurityLevel(ECU_RxData[2],&key_level);
+	 		 		SecurityLevel = GetSecurityLevel(ECU_RxData[2]);
+	 		 		key_level = GetSecurityKeyLevel(SecurityLevel);
 	 		 		//mac dinh dang xu ly cho Security level 1
 	 		 		switch(SecurityLevel)
 	 		 		{
@@ -630,6 +637,7 @@ int main(void)
 	 		 			 		error_flag = 1;
 	 		 			 	} else {
 	 		 			 		error_flag = 0;
+	 		 			 		security_state = CALCULATE_ECU_KEY;
 	 		 			 	}
 	 		 				break;
 	 		 			 }
@@ -701,7 +709,7 @@ int main(void)
 	 		 					}
 	 		 					else {
 	 		 					 	error_flag = 0;
-	 		 					 	security_state = AUTHENTICATE_TESTERKEY;
+	 		 					 	security_state = GET_TESTERKEY;
 	 		 					}
 	 		 				}
 	 		 		}
@@ -712,24 +720,30 @@ int main(void)
 	 		 	 {
 	 		 		 //handle consecutive frame recieve - nhan du so frame can nhan thi tien hanh bat co cho phep request write
 	 		 		 //step1: get full key from tester
-	 		 		 uint8_t max_cf_read = KEY_LENGTH/7+1;
+
 	 		 		 //read = 1 -> check frametype -> count += 1
-	 		 		 if(ReadRq_flag==1)
-	 		 		 {
-	 		 			 if(FrameType==2) //consecutive frame detected
+	 		 		if(ReadRq_flag==1)
+	 		 		{
+	 		 			FT_String = SF_N_PCI_FrameTypeHandle(ECU_RxData[0]);
+	 		 			FrameType = GetFrameType(FT_String);
+	 		 			if(FrameType==2) //consecutive frame detected
 	 		 			 {
 	 		 				 if(count_cf_read<=max_cf_read)
 	 		 				 {
 	 		 					 for(index_array=prev_index_array;index_array<prev_index_array+7;index_array++)
 	 		 					 {
 	 		 						 tester_key[index_array] = ECU_RxData[(index_array-prev_index_array)+1];
+	 		 						 if(index_array == 15) break;
 	 		 					 }
 	 		 					 prev_index_array = index_array;
 	 		 					 count_cf_read++;
-	 		 				 }else{
+	 		 				 }
+	 		 				 if(count_cf_read>max_cf_read)
+	 		 				 {
 	 		 					 security_state = AUTHENTICATE_TESTERKEY;
 	 		 				 }
 	 		 			 }
+	 		 			ReadRq_flag = 0;
 	 		 		 }
 	 		 		 //step2: change state to authenticate
 	 		 		 break;
@@ -737,7 +751,7 @@ int main(void)
 	 		 	 case AUTHENTICATE_TESTERKEY:
 	 		 	 {
 	 		 		 //valid key
-	 		 		 for(index_array=0;index_array<KEY_LENGTH;index_array++)
+	 		 		 for(index_array=0;index_array<16;index_array++)
 	 		 		 {
 	 		 			 if(tester_key[index_array]==key[index_array])
 	 		 			 {
@@ -763,6 +777,7 @@ int main(void)
 	 		 		 			 //key pass, turn on security flag
 	 		 		 			 security_flag = 1;
 	 		 		 			 ecu_state = IDLE_STATE;
+	 		 		 			 security_state = SEND_SEED;
 	 		 		 		 }
 	 		 		 		 break;
 	 		 		 	 }
@@ -777,6 +792,7 @@ int main(void)
 	 		 		 			error_flag = 0;
 	 		 		 			security_flag = 0;
 	 		 		 			ecu_state = IDLE_STATE;
+	 		 		 			security_state = SEND_SEED;
 	 		 		 		}
 	 		 		 		 break;
 	 		 		 	 }
@@ -787,7 +803,6 @@ int main(void)
 	 		 }
 	 		 break; //break security access state
 	 	 }
-
 
 	 }
 
