@@ -188,7 +188,12 @@ void ReadSingleFrame_handle(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+void button_shortpressing_callback_500ms(Button_Typedef *ButtonX)
+{
+	if(ButtonX == &BTN1){
+		button_sig = 1;
+	}
+}
 void button_longpressing_callback_500ms(Button_Typedef *ButtonX)
 {
 	if(ButtonX == &BTN1){
@@ -318,7 +323,6 @@ int main(void)
   Tester_TxHeader.StdId = 0x712;
   Tester_TxHeader.TransmitGlobalTime = DISABLE;
 
-  button_Init(&BTN1, GPIOB, GPIO_PIN_0); //BTN1
   HAL_TIM_Base_Start_IT(&htim4);
   /* USER CODE END 2 */
 
@@ -590,7 +594,6 @@ void StartService_ComTask(void *argument)
 	  		  } else if(button_sig==1)
 	  		  {
 	  			  tester_state = REQUEST_WRITE;
-	  			  button_sig = 0;
 	  		  }
 	  		  break;
 	  	  }
@@ -658,7 +661,7 @@ void StartService_ComTask(void *argument)
 	  	 						case 0x6E: //positive
 	  	 						{
 	  	 							//do something here to know if write successful or not
-	  	 							tester_state = REQUEST_READ; //positive response -> get back to init state
+	  	 							tester_state = INIT_STATE; //positive response -> get back to init state
 	  	 							break;
 	  	 						}
 	  	 						case 0x7F: //negative
@@ -672,6 +675,7 @@ void StartService_ComTask(void *argument)
 	  	 					}
 	  	 				}
 	  	 				flag_read_response = 0;
+	  	 				write_state = SEND_WRITEREQUEST;
 	  	 			  }
 	  	 			break;
 	  	 		  }
@@ -866,7 +870,7 @@ void StartService_ComTask(void *argument)
 	  	 						if(Tester_RxData[1]==(0x27+0x40)) //positive
 	  	 						{
 	  	 							security_flag = 1;
-	  	 							tester_state = REQUEST_WRITE;
+	  	 							tester_state = INIT_STATE;
 	  	 						} else if(Tester_RxData[1]==0x7F) //negative with invalid key error
 	  	 						{
 	  	 							security_flag = 0;
@@ -938,6 +942,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 				//turn off led
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3,GPIO_PIN_RESET);
 				security_flag = 0;
+				button_sig = 0;
+				tester_state = INIT_STATE;
 				//reset timer
 				timer_cnt = 0; //reset timer
 			}
