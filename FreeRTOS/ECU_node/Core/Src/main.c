@@ -80,7 +80,7 @@ typedef enum
 #define TEST_LABEL "TEST"
 /*Define IDS - Indetifier Services*/
 #define ReadDataByIdentifier 0x22
-#define WriteDataByIndentifier 0x2E
+#define WriteDataByIdentifier 0x2E
 #define SecurityAccess 0x27
 
 /*Define security level*/
@@ -118,10 +118,8 @@ uint8_t PositiveReadRsp_TxData[8];
 uint8_t NegativeReadRsp_TxData[8] = {0x03,0x7F,0x22,0x13,0x00,0x00,0x00,0x00};
 uint8_t SecuritySeed_TxData[8];
 uint8_t SecurityFlowControl_TxData[8] = {0x30,0x00,0x00,0x00,0x00,0x00,0x00,0x00};
-
 uint8_t SecurityNegativeResponse_TxData[8] = {0x03,0x7F,0x27,0x13,0x00,0x00,0x00,0x00};
 uint8_t SecurityPositiveResponse_TxData[8] = {0x02,0x67,0x02,0x00,0x00,0x00,0x00,0x00};
-
 uint8_t WritePositiveResponse_TxData[8] = {0x01,0x6E,0x00,0x00,0x00,0x00,0x00,0x00};
 uint8_t WriteNegativeResponse_TxData[8] = {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00};
 
@@ -177,6 +175,13 @@ uint8_t GetCANFrameSize(uint8_t aData[]);
 uint16_t GetDID(uint8_t DID_HByteString,uint8_t DID_LByteString);
 void ReadRequest_handle(void);
 void GetDIDValueFromRecordTableOfDID(uint16_t DID_Val,uint8_t *buf_arr);
+void WriteRequest_handle(void);
+void SecuritySendSeed_handle(void);
+void SecurityAccessRequest_handle(void);
+void SecurityCalcECUKey_handle(void);
+void SecurityGetTesterKey_handle(void);
+void SecurityAuthTesterKey_handle(void);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -404,6 +409,291 @@ void ReadRequest_handle(void)
 	}
 }
 
+void WriteRequest_handle(void)
+{
+	//receive write request
+	FT_String = SF_N_PCI_FrameTypeHandle(ECU_RxData[0]);
+	FrameType = GetFrameType(FT_String);
+	if(FrameType == 0)
+	{
+		 DID_Val = GetDID(ECU_RxData[2], ECU_RxData[3]);
+
+		 switch(DID_Val)
+		 {
+		 	 case 0x0123:
+		 	 {
+		 		DID_available_flag = 1;
+		 		break;
+		 	 }
+		  }
+
+		 if(DID_available_flag == 1)
+		 {
+		 	//check data length >= 4 bytes
+		 	DL_String = SF_N_PCI_DataLenngthHandle(ECU_RxData[0]);
+		 	DataLength = GetDataLength(DL_String);
+
+		 	if(DataLength>=4)
+		 	{
+		 		//write to data buffer
+		 		for(index_array = 0;index_array<4;index_array++)
+		 		{
+		 			DataBuffer[index_array] = ECU_RxData[index_array+4];
+		 		}
+		 		//send positive response
+		 		 if(HAL_CAN_AddTxMessage(&hcan,&ECU_TxHeader,WritePositiveResponse_TxData,&ECU_TxMailbox)!=HAL_OK)
+		 		 {
+		 			error_flag = 1;
+		 		 } else {
+		 			error_flag = 0;
+		 		 }
+		 	} else {
+		 		//send negative response for data length
+		 		 WriteNegativeResponse_TxData[0] = 0x7F;
+		 		 WriteNegativeResponse_TxData[1] = 0x2E;
+		 		 WriteNegativeResponse_TxData[2] = 0x13;
+
+		 		 if(HAL_CAN_AddTxMessage(&hcan,&ECU_TxHeader,WriteNegativeResponse_TxData,&ECU_TxMailbox)!=HAL_OK)
+		 		 {
+		 			 error_flag = 1;
+		 		 } else {
+		 			 error_flag = 0;
+		 		 }
+		 	 }
+		 	 DID_available_flag = 0;
+		   } else { //else no DID
+			 //send negative response - DID is not supported
+			 WriteNegativeResponse_TxData[0] = 0x7F;
+		 	 WriteNegativeResponse_TxData[1] = 0x2E;
+		 	 WriteNegativeResponse_TxData[2] = 0x31;
+
+		 	 if(HAL_CAN_AddTxMessage(&hcan,&ECU_TxHeader,WriteNegativeResponse_TxData,&ECU_TxMailbox)!=HAL_OK)
+		 	 {
+		 		 error_flag = 1;
+		 	 } else {
+		 		 error_flag = 0;
+		 	}
+		 }
+	 }
+}
+
+void SecuritySendSeed_handle(void)
+{
+	SecurityLevel = GetSecurityLevel(ECU_RxData[2]);
+	key_level = GetSecurityKeyLevel(SecurityLevel);
+
+	switch(SecurityLevel)
+	{
+		case LEVEL1:
+		{
+			//format Seed tx buffer
+			SecuritySeed_TxData[0] = 0x06;
+			SecuritySeed_TxData[1] = ECU_RxData[1] + 40;
+			SecuritySeed_TxData[2] = ECU_RxData[2];
+			//format seed before sending
+			//random generate seed
+			seed[0] = rand()%255;
+			seed[1] = rand()%255;
+			seed[2] = rand()%255;
+			seed[3] = rand()%255;
+			//add to seed transmit data
+			SecuritySeed_TxData[3] = seed[0];
+			SecuritySeed_TxData[4] = seed[1];
+			SecuritySeed_TxData[5] = seed[2];
+			SecuritySeed_TxData[6] = seed[3];
+			//restric random bytes while transmiting
+			SecuritySeed_TxData[7] = 0x00;
+			SecuritySeed_TxData[8] = 0x00;
+			//response seed to Tester
+			if(HAL_CAN_AddTxMessage(&hcan,&ECU_TxHeader,SecuritySeed_TxData,&ECU_TxMailbox) != HAL_OK)
+			{
+			 	error_flag = 1;
+			} else {
+			 	error_flag = 0;
+			 	security_state = CALCULATE_ECU_KEY;
+			}
+			break;
+		}
+	}
+}
+
+void SecurityCalcECUKey_handle(void)
+{
+	if(ReadRq_flag == 1)
+	{
+		FT_String = SF_N_PCI_FrameTypeHandle(ECU_RxData[0]);
+		FrameType = GetFrameType(FT_String);
+
+		if(FrameType==1) //first frame detected
+		{
+			switch(SecurityLevel)
+			{
+			 	case LEVEL1:
+			 	{
+			 		if(key_level == ECU_RxData[3])
+			 		{
+			 		 	//self calculate key
+			 		 	//calc key
+			 		 	key[0] = seed[0] ^ seed[1]; //xor
+			 		 	key[1] = seed[1] + seed[2];
+			 		 	key[2] = seed[2] ^ seed[3];
+			 		 	key[3] = seed[3] + seed[0];
+
+			 		 	key[4] = seed[0] | seed[1];
+			 		 	key[5] = seed[1] + seed[2];
+			 		 	key[6] = seed[2] | seed[3];
+			 		 	key[7] = seed[3] + seed[0];
+
+			 		 	key[8] = seed[0] & seed[1];
+			 		 	key[9] = seed[1] + seed[2];
+			 		 	key[10] = seed[2] & seed[3];
+			 		 	key[11] = seed[3] + seed[0];
+
+			 		 	key[12] = seed[0] - seed[1];
+			 		 	key[13] = seed[1] + seed[2];
+			 		 	key[14] = seed[2] - seed[3];
+			 		 	key[15] = seed[3] + seed[0];
+			 		 }
+			 		break;
+			 	  }
+			 	}
+		 }
+
+		 tester_key[0] = ECU_RxData[4];
+		 tester_key[1] = ECU_RxData[5];
+		 tester_key[2] = ECU_RxData[6];
+		 tester_key[3] = ECU_RxData[7];
+		 // count correct == 4 -> send flow control
+		 for(index_array = 0;index_array<4;index_array++)
+		 {
+			if(tester_key[index_array] == key[index_array])
+			{
+			 	count_checkkey_fc++;
+			}
+		  }
+
+		 if(count_checkkey_fc == 4 && ECU_RxData[1]==KEY_LENGTH)//4 key corrrect send back flow control
+		 {
+			 if(HAL_CAN_AddTxMessage(&hcan,&ECU_TxHeader,SecurityFlowControl_TxData,&ECU_TxMailbox)!=HAL_OK)
+			 {
+			 	error_flag = 1;
+			 }
+			 else {
+			 	error_flag = 0;
+			 	security_state = GET_TESTERKEY;
+			 }
+		 }
+	}
+}
+
+void SecurityGetTesterKey_handle(void)
+{
+	 //handle consecutive frame recieve
+	 //step1: get full key from tester
+	 //read = 1 -> check frametype -> count += 1
+	 if(ReadRq_flag==1)
+	 {
+		FT_String = SF_N_PCI_FrameTypeHandle(ECU_RxData[0]);
+		FrameType = GetFrameType(FT_String);
+		if(FrameType==2) //consecutive frame detected
+		{
+			if(count_cf_read<=max_cf_read)
+			{
+			 	for(index_array=prev_index_array;index_array<prev_index_array+7;index_array++)
+			 	{
+			 		 tester_key[index_array] = ECU_RxData[(index_array-prev_index_array)+1];
+			 		 if(index_array == 15) break; }
+			 	 prev_index_array = index_array;
+			 	 count_cf_read++;
+			 }
+			 if(count_cf_read>max_cf_read)
+			 {
+			 	security_state = AUTHENTICATE_TESTERKEY;
+			 }
+		  }
+		  ReadRq_flag = 0;
+	   }
+}
+void SecurityAuthTesterKey_handle(void)
+{
+	 //valid key
+	 for(index_array=0;index_array<16;index_array++)
+	 {
+		if(tester_key[index_array]==key[index_array])
+		{
+			valid_key = 1; }
+		else if(tester_key[index_array]!=key[index_array])
+		{
+			valid_key = 0;
+			break;
+		 }
+	  }
+
+	 switch(valid_key) //valid key state
+	 {
+		case PASS_KEY:
+		{
+			//send positive response to let tester write data to ecu
+			if(HAL_CAN_AddTxMessage(&hcan,&ECU_TxHeader,SecurityPositiveResponse_TxData,&ECU_TxMailbox)!=HAL_OK)
+			{
+			 	error_flag = 1; }
+			else
+			{
+			 	error_flag = 0;
+			 	//key pass, turn on security flag
+			 	security_flag = 1;
+			 	ecu_state = IDLE_STATE;
+			 	security_state = SEND_SEED;
+			 }
+			 break;
+		 }
+		 case INVALID_KEY:
+		 {
+			 //send negative response with invalid key error code
+			 if(HAL_CAN_AddTxMessage(&hcan,&ECU_TxHeader,SecurityNegativeResponse_TxData,&ECU_TxMailbox)!=HAL_OK)
+			 {
+			 	error_flag = 1;
+			 } else
+			 {
+			 	error_flag = 0;
+			 	security_flag = 0;
+			 	ecu_state = IDLE_STATE;
+			 	security_state = SEND_SEED;
+			  }
+			break;
+		  }
+		}
+}
+
+void SecurityAccessRequest_handle(void)
+{
+	 switch(security_state)
+	{
+		case SEND_SEED:
+		{
+		 	SecuritySendSeed_handle();
+		 	ReadRq_flag = 0;
+		 	break;
+		}
+		case CALCULATE_ECU_KEY:
+		{
+		 	SecurityCalcECUKey_handle();
+		 	ReadRq_flag = 0;
+		 	break;
+		}
+		case GET_TESTERKEY:
+		{
+		 	SecurityGetTesterKey_handle();
+		 	break;
+		}
+		case AUTHENTICATE_TESTERKEY:
+		{
+		 	SecurityAuthTesterKey_handle();
+		 	break;
+		 }
+
+	}
+}
 
 /* USER CODE END 0 */
 
@@ -492,7 +782,7 @@ int main(void)
 	 			 		 ecu_state = READREQUEST_STATE;
 	 			 		 break;
 	 			 	 }
-	 			 	 case WriteDataByIndentifier:
+	 			 	 case WriteDataByIdentifier:
 	 			 	 {
 	 			 		 if(security_flag == 0)
 	 			 		 {
@@ -528,276 +818,13 @@ int main(void)
 	 	 }
 	 	 case WRITEREQUEST_STATE:
 	 	 {
-	 		 //receive write request
-	 		FT_String = SF_N_PCI_FrameTypeHandle(ECU_RxData[0]);
-	 		FrameType = GetFrameType(FT_String);
-	 		if(FrameType == 0)
-	 		{
-	 			 DID_Val = GetDID(ECU_RxData[2], ECU_RxData[3]);
-
-	 			 switch(DID_Val)
-	 			 {
-	 			 	 case 0x0123:
-	 			 	 {
-	 					DID_available_flag = 1;
-	 					break;
-	 				}
-	 			 }
-
-	 			 if(DID_available_flag == 1)
-	 			 {
-	 				 //check data length >= 4 bytes
-	 				 DL_String = SF_N_PCI_DataLenngthHandle(ECU_RxData[0]);
-	 				 DataLength = GetDataLength(DL_String);
-
-	 				 if(DataLength>=4)
-	 				 {
-	 					 //write to data buffer
-	 					 for(index_array = 0;index_array<4;index_array++)
-	 					 {
-	 						 DataBuffer[index_array] = ECU_RxData[index_array+4];
-	 					 }
-	 					 //send positive response
-	 					 if(HAL_CAN_AddTxMessage(&hcan,&ECU_TxHeader,WritePositiveResponse_TxData,&ECU_TxMailbox)!=HAL_OK)
-	 					 {
-	 						 error_flag = 1;
-	 					 } else {
-	 						 error_flag = 0;
-	 					 }
-
-	 				 } else {
-	 					 //send negative response for data length
-
-	 					 WriteNegativeResponse_TxData[0] = 0x7F;
-	 					 WriteNegativeResponse_TxData[1] = 0x2E;
-	 					 WriteNegativeResponse_TxData[2] = 0x13;
-
-	 					 if(HAL_CAN_AddTxMessage(&hcan,&ECU_TxHeader,WriteNegativeResponse_TxData,&ECU_TxMailbox)!=HAL_OK)
-	 					 {
-	 						 error_flag = 1;
-	 					 } else {
-	 						 error_flag = 0;
-	 					 }
-	 				 }
-	 				 DID_available_flag = 0;
-	 			 } else { //else no DID
-	 				//send negative response - DID is not supported
-	 				 WriteNegativeResponse_TxData[0] = 0x7F;
-	 				 WriteNegativeResponse_TxData[1] = 0x2E;
-	 				 WriteNegativeResponse_TxData[2] = 0x31;
-
-	 				 if(HAL_CAN_AddTxMessage(&hcan,&ECU_TxHeader,WriteNegativeResponse_TxData,&ECU_TxMailbox)!=HAL_OK)
-	 				 {
-	 					 error_flag = 1;
-	 				 } else {
-	 					 error_flag = 0;
-	 				 }
-	 			}
-	 		 }
+	 		 WriteRequest_handle();
 	 		 ecu_state = IDLE_STATE;
 	 		 break;
 	 	 }
 	 	 case SECURITY_ACCESS_STATE:
 	 	 {
-	 		 switch(security_state)
-	 		 {
-	 		 	 case SEND_SEED: //truoc do da nhan duoc goi request security tu tester
-	 		 	 {
-	 		 		SecurityLevel = GetSecurityLevel(ECU_RxData[2]);
-	 		 		key_level = GetSecurityKeyLevel(SecurityLevel);
-	 		 		//mac dinh dang xu ly cho Security level 1
-	 		 		switch(SecurityLevel)
-	 		 		{
-	 		 			case LEVEL1:
-	 		 			{
-	 		 				//format Seed tx buffer
-	 		 				SecuritySeed_TxData[0] = 0x06;
-	 		 			 	SecuritySeed_TxData[1] = ECU_RxData[1] + 40;
-	 		 			 	SecuritySeed_TxData[2] = ECU_RxData[2];
-	 		 			 	//format seed before sending
-	 		 			 	//random generate seed
-	 		 			 	seed[0] = rand()%255;
-	 		 			 	seed[1] = rand()%255;
-	 		 			 	seed[2] = rand()%255;
-	 		 			 	seed[3] = rand()%255;
-	 		 			 	//add to seed transmit data
-	 		 			 	SecuritySeed_TxData[3] = seed[0];
-	 		 			 	SecuritySeed_TxData[4] = seed[1];
-	 		 			 	SecuritySeed_TxData[5] = seed[2];
-	 		 			 	SecuritySeed_TxData[6] = seed[3];
-	 		 			 	//restric random bytes while transmiting
-	 		 			 	SecuritySeed_TxData[7] = 0x00;
-	 		 			 	SecuritySeed_TxData[8] = 0x00;
-	 		 			 	//response seed to Tester
-	 		 			 	if(HAL_CAN_AddTxMessage(&hcan,&ECU_TxHeader,SecuritySeed_TxData,&ECU_TxMailbox) != HAL_OK)
-	 		 			 	{
-	 		 			 		error_flag = 1;
-	 		 			 	} else {
-	 		 			 		error_flag = 0;
-	 		 			 		security_state = CALCULATE_ECU_KEY;
-	 		 			 	}
-	 		 				break;
-	 		 			 }
-	 		 		}
-	 		 		ReadRq_flag = 0;
-	 		 		break;
-	 		 	   }
-	 		 	 case CALCULATE_ECU_KEY:
-	 		 	 {
-	 		 		if(ReadRq_flag == 1)
-	 		 		{
-	 		 			FT_String = SF_N_PCI_FrameTypeHandle(ECU_RxData[0]);
-	 		 			FrameType = GetFrameType(FT_String);
-
-	 		 			 if(FrameType==1) //first frame detected
-	 		 			 {
-	 		 			 	//mac dinh dang xu ly cho Security level 1
-	 		 				 switch(SecurityLevel)
-	 		 				 {
-	 		 				 	 case LEVEL1:
-	 		 				 	 {
-	 		 				 		 if(key_level == ECU_RxData[3])
-	 		 				 		 {
-	 		 				 			//self calculate key
-	 		 				 			//calc key
-	 		 				 			key[0] = seed[0] ^ seed[1]; //xor
-	 		 				 			key[1] = seed[1] + seed[2];
-	 		 				 			key[2] = seed[2] ^ seed[3];
-	 		 				 			key[3] = seed[3] + seed[0];
-
-	 		 				 			key[4] = seed[0] | seed[1];
-	 		 				 			key[5] = seed[1] + seed[2];
-	 		 				 			key[6] = seed[2] | seed[3];
-	 		 				 			key[7] = seed[3] + seed[0];
-
-	 		 				 			key[8] = seed[0] & seed[1];
-	 		 				 			key[9] = seed[1] + seed[2];
-	 		 				 			key[10] = seed[2] & seed[3];
-	 		 				 			key[11] = seed[3] + seed[0];
-
-	 		 				 			key[12] = seed[0] - seed[1];
-	 		 				 			key[13] = seed[1] + seed[2];
-	 		 				 			key[14] = seed[2] - seed[3];
-	 		 				 			key[15] = seed[3] + seed[0];
-	 		 				 		 }
-	 		 				 		 break;
-	 		 				 	 }
-	 		 				 }
-	 		 				}
-	 		 				//check key0 - key 3 dung thi gui ve flow control gui tiep
-	 		 				tester_key[0] = ECU_RxData[4];
-	 		 				tester_key[1] = ECU_RxData[5];
-	 		 				tester_key[2] = ECU_RxData[6];
-	 		 				tester_key[3] = ECU_RxData[7];
-	 		 				//for roi so sanh - se co bien count corrrect -  count correct == 4 -> send flow control
-	 		 				for(index_array = 0;index_array<4;index_array++)
-	 		 				{
-	 		 					if(tester_key[index_array] == key[index_array])
-	 		 					{
-	 		 					 	count_checkkey_fc++;
-	 		 					 }
-	 		 				}
-
-	 		 				if(count_checkkey_fc == 4 && ECU_RxData[1]==KEY_LENGTH)//4 key corrrect send back flow control
-	 		 				{
-	 		 					if(HAL_CAN_AddTxMessage(&hcan,&ECU_TxHeader,SecurityFlowControl_TxData,&ECU_TxMailbox)!=HAL_OK)
-	 		 					{
-	 		 					 	error_flag = 1;
-	 		 					}
-	 		 					else {
-	 		 					 	error_flag = 0;
-	 		 					 	security_state = GET_TESTERKEY;
-	 		 					}
-	 		 				}
-	 		 		}
-	 		 		ReadRq_flag = 0;
-	 		 		break;
-	 		 	 }
-	 		 	 case GET_TESTERKEY:
-	 		 	 {
-	 		 		 //handle consecutive frame recieve - nhan du so frame can nhan thi tien hanh bat co cho phep request write
-	 		 		 //step1: get full key from tester
-
-	 		 		 //read = 1 -> check frametype -> count += 1
-	 		 		if(ReadRq_flag==1)
-	 		 		{
-	 		 			FT_String = SF_N_PCI_FrameTypeHandle(ECU_RxData[0]);
-	 		 			FrameType = GetFrameType(FT_String);
-	 		 			if(FrameType==2) //consecutive frame detected
-	 		 			 {
-	 		 				 if(count_cf_read<=max_cf_read)
-	 		 				 {
-	 		 					 for(index_array=prev_index_array;index_array<prev_index_array+7;index_array++)
-	 		 					 {
-	 		 						 tester_key[index_array] = ECU_RxData[(index_array-prev_index_array)+1];
-	 		 						 if(index_array == 15) break;
-	 		 					 }
-	 		 					 prev_index_array = index_array;
-	 		 					 count_cf_read++;
-	 		 				 }
-	 		 				 if(count_cf_read>max_cf_read)
-	 		 				 {
-	 		 					 security_state = AUTHENTICATE_TESTERKEY;
-	 		 				 }
-	 		 			 }
-	 		 			ReadRq_flag = 0;
-	 		 		 }
-	 		 		 //step2: change state to authenticate
-	 		 		 break;
-	 		 	 }
-	 		 	 case AUTHENTICATE_TESTERKEY:
-	 		 	 {
-	 		 		 //valid key
-	 		 		 for(index_array=0;index_array<16;index_array++)
-	 		 		 {
-	 		 			 if(tester_key[index_array]==key[index_array])
-	 		 			 {
-	 		 				 valid_key = 1;
-	 		 			 } else if(tester_key[index_array]!=key[index_array])
-	 		 			 {
-	 		 				 valid_key = 0;
-	 		 				 break;
-	 		 			 }
-	 		 		 }
-
-	 		 		 switch(valid_key) //valid key state
-	 		 		 {
-	 		 		 	 case PASS_KEY:
-	 		 		 	 {
-	 		 		 		 //send positive response to let tester write data to ecu
-	 		 		 		 if(HAL_CAN_AddTxMessage(&hcan,&ECU_TxHeader,SecurityPositiveResponse_TxData,&ECU_TxMailbox)!=HAL_OK)
-	 		 		 		 {
-	 		 		 			 error_flag = 1;
-	 		 		 		 } else
-	 		 		 		 {
-	 		 		 			 error_flag = 0;
-	 		 		 			 //key pass, turn on security flag
-	 		 		 			 security_flag = 1;
-	 		 		 			 ecu_state = IDLE_STATE;
-	 		 		 			 security_state = SEND_SEED;
-	 		 		 		 }
-	 		 		 		 break;
-	 		 		 	 }
-	 		 		 	 case INVALID_KEY:
-	 		 		 	 {
-	 		 		 		 //send negative response with invalid key error code
-	 		 		 		if(HAL_CAN_AddTxMessage(&hcan,&ECU_TxHeader,SecurityNegativeResponse_TxData,&ECU_TxMailbox)!=HAL_OK)
-	 		 		 		{
-	 		 		 			error_flag = 1;
-	 		 		 		} else
-	 		 		 		{
-	 		 		 			error_flag = 0;
-	 		 		 			security_flag = 0;
-	 		 		 			ecu_state = IDLE_STATE;
-	 		 		 			security_state = SEND_SEED;
-	 		 		 		}
-	 		 		 		 break;
-	 		 		 	 }
-	 		 		 }
-	 		 		 break;
-	 		 	 }
-
-	 		 }
+	 		 SecurityAccessRequest_handle();
 	 		 break; //break security access state
 	 	 }
 
@@ -905,7 +932,7 @@ static void MX_TIM4_Init(void)
 
   /* USER CODE END TIM4_Init 1 */
   htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 3599;
+  htim4.Init.Prescaler = 7199;
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim4.Init.Period = 9;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;

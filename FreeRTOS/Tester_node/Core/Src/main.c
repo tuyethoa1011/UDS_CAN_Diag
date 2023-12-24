@@ -42,7 +42,7 @@ typedef enum
 
 typedef enum
 {
-	REQUEST_SEED,//can phai co flag de chuong trinh chay request khong lam gi
+	REQUEST_SEED,
 	SEND_KEY,
 	AUTHENTICATE_RESPONSE,
 }Security_Status;
@@ -643,43 +643,43 @@ void StartService_ComTask(void *argument)
 	  		   			   }
 	  	 				}
 	  	 				break;
-	  		   	}
-	  	 		case WRITE_RESPONSE:
-	  	 		{
-	  	 			//wait for write response
-	  	 			if(flag_read_response == 1)
-	  	 			{
-	  	 				//check frame type
-	  	 				//check what kind of response through Tester_RxData[1]
-	  	 				FT_String = SF_N_PCI_FrameTypeHandle(Tester_RxData[0]);
-	  	 				FrameType = GetFrameType(FT_String);
+	  		   	   }
+	  		   	   case WRITE_RESPONSE:
+	  		   	   {
+	  		   		   //wait for write response
+	  		   		   if(flag_read_response == 1)
+	  		   		   {
+	  		   			   //check frame type
+	  		   			   //check what kind of response through Tester_RxData[1]
+	  		   			   FT_String = SF_N_PCI_FrameTypeHandle(Tester_RxData[0]);
+	  		   			   FrameType = GetFrameType(FT_String);
 
-	  	 				if(FrameType==0)
-	  	 				{
-	  	 					switch(Tester_RxData[1])
-	  	 					{
-	  	 						case 0x6E: //positive
-	  	 						{
-	  	 							//do something here to know if write successful or not
-	  	 							tester_state = INIT_STATE; //positive response -> get back to init state
-	  	 							break;
-	  	 						}
-	  	 						case 0x7F: //negative
-	  							{
-	  								//do something here to know if write successful or not
-	  								//what kind of negative response we receive
-	  								tester_state = INIT_STATE;
-	  					 			//negative response -> get back to init state
-	  								break;
-	  							}
-	  	 					}
-	  	 				}
-	  	 				flag_read_response = 0;
-	  	 				write_state = SEND_WRITEREQUEST;
-	  	 			  }
-	  	 			break;
-	  	 		  }
-	  	 		}
+	  		   			   if(FrameType==0)
+	  		   			   {
+	  		   				   switch(Tester_RxData[1])
+	  		   				   {
+	  	 							case 0x6E: //positive
+	  	 							{
+	  	 								//do something here to know if write successful or not
+	  	 								tester_state = INIT_STATE; //positive response -> get back to init state
+	  	 								break;
+	  	 							}
+	  	 							case 0x7F: //negative
+	  	 							{
+	  	 								//do something here to know if write successful or not
+	  	 								//what kind of negative response we receive
+	  	 								tester_state = INIT_STATE;
+	  	 								//negative response -> get back to init state
+	  	 								break;
+	  	 							}
+	  		   				   }
+	  		   			   }
+	  		   			   flag_read_response = 0;
+	  		   			   write_state = SEND_WRITEREQUEST;
+	  		   		   	  }
+	  		   		   break;
+	  		   	   	   }
+	  	 			}
 	  		   break; //BREAK REQUEST WRITE CASE
 	  	 	}
 	  	 	case REQUEST_SECURITY_ACCESS:
@@ -885,11 +885,6 @@ void StartService_ComTask(void *argument)
 	  	 				break;
 	  	 			}
 	  	 		}
-
-	  	 		//sau khi nhan duoc du lieu accept security access tien hanh
-	  	 		//quay ve trang thai write
-	  	 		//dong thoi bat den - kich hoat flag o timer
-	  	 		//
 	  	 		break;
 	  	 	}
 	  	  }
